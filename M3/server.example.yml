@@ -1,0 +1,6 @@
+api_key: "EMPTY"
+api_base: "http://127.0.0.1:12345/v1"
+temperature: 0
+tools_folder: "/workspace/project/data/raw/repos/stabletoolbench/official_query_tools"
+port: 8080
+model: "stabletoolbench-mirrorapi-cache"

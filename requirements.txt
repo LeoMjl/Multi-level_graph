@@ -1,0 +1,13 @@
+faiss-cpu
+json-repair
+jsonschema
+matplotlib
+numpy
+openai
+pandas
+pyarrow
+rouge
+scikit-learn
+sentence-transformers
+tiktoken
+umap-learn

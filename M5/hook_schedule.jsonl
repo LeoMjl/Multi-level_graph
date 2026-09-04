@@ -1,0 +1,10 @@
+{"hook_id":"H01","plant_chapter":5,"trigger_chapter":181,"scoring_chapters":[184],"evaluation_window":[181,185]}
+{"hook_id":"H02","plant_chapter":9,"trigger_chapter":205,"scoring_chapters":[209,211],"evaluation_window":[208,212]}
+{"hook_id":"H03","plant_chapter":14,"trigger_chapter":163,"scoring_chapters":[168],"evaluation_window":[166,170]}
+{"hook_id":"H04","plant_chapter":18,"trigger_chapter":249,"scoring_chapters":[252,253],"evaluation_window":[250,254]}
+{"hook_id":"H05","plant_chapter":23,"trigger_chapter":266,"scoring_chapters":[270],"evaluation_window":[268,272]}
+{"hook_id":"H06","plant_chapter":28,"trigger_chapter":223,"scoring_chapters":[225],"evaluation_window":[223,227]}
+{"hook_id":"H07","plant_chapter":32,"trigger_chapter":190,"scoring_chapters":[194],"evaluation_window":[191,195]}
+{"hook_id":"H08","plant_chapter":37,"trigger_chapter":255,"scoring_chapters":[263],"evaluation_window":[261,265]}
+{"hook_id":"H09","plant_chapter":44,"trigger_chapter":241,"scoring_chapters":[244,246],"evaluation_window":[244,248]}
+{"hook_id":"H10","plant_chapter":49,"trigger_chapter":217,"scoring_chapters":[292,297,298,299],"evaluation_window":[291,300]}

@@ -1,0 +1,22 @@
+{
+  "experiment_id": "M5_novel_320",
+  "novel_title": "临潮零线",
+  "language": "zh-CN",
+  "genre": ["近未来", "海港悬疑", "灾难", "科技伦理"],
+  "total_chapters": 320,
+  "total_volumes": 8,
+  "chapters_per_volume": 40,
+  "target_total_han_chars": 800000,
+  "target_chars_per_chapter": 2500,
+  "writer_requested_chars_per_chapter": [2000, 2500],
+  "allowed_chars_per_chapter": [2000, 3500],
+  "narrative_person": "第三人称限知，以林澈为主要视角，必要时切换周宁、谢岚或祁衡，但单章内保持视角稳定",
+  "style": "克制、具象、悬念驱动；技术细节必须服务情节；避免百科式说明和空洞抒情",
+  "global_requirements": [
+    "严格执行当前章节提示，但不得读取未来章节提示",
+    "依据本次提供的既有事实保持人物状态、物品位置、世界规则、承诺、秘密和未完成线索一致",
+    "保持时间线、因果关系、人物知识边界和物品状态一致",
+    "每章形成局部推进并留下自然的下一章动力",
+    "只输出当前章标题和正文，不输出计划、摘要、分析、内部编号或记忆内容"
+  ]
+}

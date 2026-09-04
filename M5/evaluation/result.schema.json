@@ -1,0 +1,193 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "m5-review",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "protocol_sha256", "review_manifest_sha256",
+    "anonymous_id", "reviewer_model", "reasoning_effort", "hooks",
+    "continuity_transition_scores", "plot_coherence",
+    "long_range_narrative_quality", "contradictions",
+    "evidence_recall_at_k", "state_fidelity"
+  ],
+  "properties": {
+    "schema_version": {"const": "m5-review"},
+    "protocol_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "review_manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "anonymous_id": {"type": "string", "pattern": "^E0[1-6]$"},
+    "reviewer_model": {"const": "gpt-5.6-sol"},
+    "reasoning_effort": {"const": "medium"},
+    "hooks": {
+      "type": "array", "minItems": 10, "maxItems": 10,
+      "items": {"$ref": "#/$defs/hook"}
+    },
+    "continuity_transition_scores": {
+      "type": "array", "minItems": 32, "maxItems": 32,
+      "items": {
+        "type": "object", "additionalProperties": true,
+        "required": ["target_chapter", "score"],
+        "properties": {
+          "target_chapter": {"type": "integer", "minimum": 2, "maximum": 320},
+          "score": {"type": "number", "minimum": 1, "maximum": 5}
+        }
+      }
+    },
+    "plot_coherence": {"$ref": "#/$defs/scoreBlock"},
+    "long_range_narrative_quality": {"$ref": "#/$defs/longRangeBlock"},
+    "contradictions": {
+      "type": "object", "required": ["count", "items"],
+      "properties": {
+        "count": {"type": "integer", "minimum": 0},
+        "items": {"type": "array"}
+      }
+    },
+    "evidence_recall_at_k": {
+      "type": "object", "additionalProperties": false,
+      "required": ["macro_average", "micro", "average_k"],
+      "properties": {
+        "macro_average": {"type": "number", "minimum": 0, "maximum": 1},
+        "average_k": {"type": "number", "minimum": 0},
+        "micro": {
+          "type": "object", "additionalProperties": false,
+          "required": [
+            "direct", "transitive", "none", "conflict", "excluded_prompt", "total"
+          ],
+          "properties": {
+            "direct": {"type": "integer", "minimum": 0},
+            "transitive": {"type": "integer", "minimum": 0},
+            "none": {"type": "integer", "minimum": 0},
+            "conflict": {"type": "integer", "minimum": 0},
+            "excluded_prompt": {"type": "integer", "minimum": 0},
+            "total": {"type": "integer", "minimum": 0}
+          }
+        }
+      }
+    },
+    "state_fidelity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["numerator", "denominator"],
+      "properties": {
+        "numerator": {"type": "integer", "minimum": 0},
+        "denominator": {"const": 21}
+      }
+    }
+  },
+  "$defs": {
+    "scoreBlock": {
+      "type": "object", "additionalProperties": true,
+      "required": ["total"],
+      "properties": {"total": {"type": "number", "minimum": 1, "maximum": 5}}
+    },
+    "longRangeBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "review_status", "foreshadowing_naturalness", "payoff_satisfaction",
+        "problem_solving_reasonableness", "long_range_closure", "total"
+      ],
+      "properties": {
+        "review_status": {"const": "reviewed"},
+        "foreshadowing_naturalness": {"type": "number", "minimum": 1, "maximum": 5},
+        "payoff_satisfaction": {"type": "number", "minimum": 1, "maximum": 5},
+        "problem_solving_reasonableness": {"type": "number", "minimum": 1, "maximum": 5},
+        "long_range_closure": {"type": "number", "minimum": 1, "maximum": 5},
+        "total": {"type": "number", "minimum": 1, "maximum": 5}
+      }
+    },
+    "anchor": {
+      "type": "object", "additionalProperties": false,
+      "required": ["chapter_id", "quote"],
+      "properties": {
+        "chapter_id": {"type": "integer", "minimum": 1, "maximum": 320},
+        "unit_id": {"type": ["string", "null"]},
+        "quote": {"type": "string", "minLength": 8}
+      }
+    },
+    "resolutionAnchor": {
+      "type": "object", "additionalProperties": false,
+      "required": ["role", "chapter_id", "quote"],
+      "properties": {
+        "role": {
+          "enum": [
+            "problem", "resource", "verification", "operation",
+            "mechanism", "result", "continuity"
+          ]
+        },
+        "chapter_id": {"type": "integer", "minimum": 1, "maximum": 320},
+        "quote": {"type": "string", "minLength": 8}
+      }
+    },
+    "predicate": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "predicate_id", "prompt_disclosed", "prompt_laundered", "provenance",
+        "conflict", "output_used", "source_anchors", "history_anchors", "output_anchors"
+      ],
+      "properties": {
+        "predicate_id": {"type": "string"},
+        "prompt_disclosed": {"type": "boolean"},
+        "prompt_laundered": {"type": "boolean"},
+        "provenance": {"enum": ["D", "T", "N"]},
+        "conflict": {"type": "boolean"},
+        "output_used": {"type": "boolean"},
+        "source_anchors": {"type": "array", "items": {"$ref": "#/$defs/anchor"}},
+        "history_anchors": {"type": "array", "items": {"$ref": "#/$defs/anchor"}},
+        "output_anchors": {"type": "array", "items": {"$ref": "#/$defs/anchor"}}
+      }
+    },
+    "hook": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "hook_id", "predicate_provenance", "attribution", "target_route",
+        "gold", "local_resolution", "derived_category", "confidence", "reason_codes"
+      ],
+      "properties": {
+        "hook_id": {"type": "string", "pattern": "^H(0[1-9]|10)$"},
+        "predicate_provenance": {"type": "array", "items": {"$ref": "#/$defs/predicate"}},
+        "attribution": {
+          "type": "object", "additionalProperties": false,
+          "required": ["a_min", "a_full", "status"],
+          "properties": {
+            "a_min": {"type": "boolean"}, "a_full": {"type": "boolean"},
+            "status": {"enum": ["none", "min", "full", "unidentifiable"]}
+          }
+        },
+        "target_route": {"enum": ["none", "mentioned", "attempted", "auxiliary", "essential"]},
+        "gold": {
+          "type": "object", "additionalProperties": false,
+          "required": ["seed_all", "state_all", "payoff_all", "causal_result", "in_window", "forbidden_free"],
+          "properties": {
+            "seed_all": {"type": "boolean"}, "state_all": {"type": "boolean"},
+            "payoff_all": {"type": "boolean"}, "causal_result": {"type": "boolean"},
+            "in_window": {"type": "boolean"}, "forbidden_free": {"type": "boolean"}
+          }
+        },
+        "local_resolution": {
+          "type": "object", "additionalProperties": false,
+          "required": [
+            "same_problem_resolution", "subtype", "resource_supported",
+            "causal_chain_complete", "state_consistent", "cost_reasonable",
+            "continuity_3_chapters", "forbidden_free", "anchors",
+            "prompt_anchors", "history_anchors"
+          ],
+          "properties": {
+            "same_problem_resolution": {"enum": ["none", "partial", "full"]},
+            "subtype": {"enum": ["none", "historical_alternative", "prompt_scaffolded", "window_verified", "mixed"]},
+            "resource_supported": {"type": "boolean"},
+            "causal_chain_complete": {"type": "boolean"},
+            "state_consistent": {"type": "boolean"},
+            "cost_reasonable": {"type": "boolean"},
+            "continuity_3_chapters": {"type": "boolean"},
+            "forbidden_free": {"type": "boolean"},
+            "anchors": {"type": "array", "items": {"$ref": "#/$defs/resolutionAnchor"}},
+            "prompt_anchors": {"type": "array", "items": {"$ref": "#/$defs/anchor"}},
+            "history_anchors": {"type": "array", "items": {"$ref": "#/$defs/anchor"}}
+          }
+        },
+        "derived_category": {"enum": ["G", "P", "L", "F"]},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "reason_codes": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  }
+}
