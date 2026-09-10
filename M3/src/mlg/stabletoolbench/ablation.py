@@ -61,7 +61,7 @@ class TaskGraphAblation:
             "dependency_policy": (
                 "explicit_hard_only"
                 if self.hard_dependencies_only
-                else "fused_hard_and_soft"
+                else "three_channel_union_then_agent_filter"
             ),
             "structured_l4": self.materialize_structured_l4,
             "action_context": (

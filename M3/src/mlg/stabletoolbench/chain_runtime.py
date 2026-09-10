@@ -7,6 +7,9 @@ from mlg.stabletoolbench.chain_cognition import (
     request_stage_expansion,
 )
 from mlg.stabletoolbench.planning import PLAN_PROTOCOL
+from mlg.stabletoolbench.dependency_filter import (
+    DEPENDENCY_FILTER_PROTOCOL, request_dependency_filter,
+)
 
 
 class StateDrivenCognitionMixin:
@@ -28,7 +31,19 @@ class StateDrivenCognitionMixin:
         self.validator_tokens = 0
         self.validation_trace = []
         self.action_routing_trace = []
+        self.dependency_filter_tokens = 0
+        self.dependency_filter_calls = 0
         return plan, source
+
+    def _filter_dependencies(self, context):
+        retained, trace = request_dependency_filter(
+            self.llm, context, self.process_id, self.ablation.sampling_seed,
+        )
+        self.total_tokens += trace["tokens"]
+        self.query_count += trace["calls"]
+        self.dependency_filter_tokens += trace["tokens"]
+        self.dependency_filter_calls += trace["calls"]
+        return retained, trace
 
     def _expand_stage(self, stage_id: str, *, phase: str = "online") -> list[str]:
         stage_node = self.trajectory.graph.nodes[stage_id]
@@ -100,7 +115,10 @@ class StateDrivenCognitionMixin:
                 "trace": self.trajectory.expansion_trace,
             },
             "mlg_dependency_construction": {
-                "calls": len(self.trajectory.dependency_trace),
+                "protocol": DEPENDENCY_FILTER_PROTOCOL,
+                "calls": self.dependency_filter_calls,
+                "tokens": self.dependency_filter_tokens,
+                "events": len(self.trajectory.dependency_trace),
                 "trace": self.trajectory.dependency_trace,
             },
             "mlg_state_updates": {

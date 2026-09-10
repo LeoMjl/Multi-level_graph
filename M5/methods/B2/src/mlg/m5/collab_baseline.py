@@ -38,6 +38,8 @@ class CollaborationBaselineRun:
         run_mode: str = "pilot",
         isolation_policy: str | None = None,
         isolation_evidence_sha256: str | None = None,
+        max_retries: int = 5,
+        text_dir: Path | None = None,
     ) -> None:
         if condition not in BASELINE_CONDITIONS:
             raise ValueError(f"Unknown collaboration baseline: {condition}")
@@ -52,11 +54,13 @@ class CollaborationBaselineRun:
             )
         self.dataset = M5Dataset(m5_root)
         self.run_dir = run_dir.resolve()
+        self.text_dir = (text_dir or self.run_dir / "chapters").resolve()
         self.condition = condition
         self.replicate = replicate
         self.token_budget = token_budget
         self.model = model
         self.reasoning_effort = reasoning_effort
+        self.max_retries = max_retries
         self.run_mode = run_mode
         self.isolation_policy = isolation_policy
         self.isolation_evidence_sha256 = isolation_evidence_sha256
@@ -80,6 +84,7 @@ class CollaborationBaselineRun:
                 "run_mode": run_mode,
                 "isolation_policy": isolation_policy,
                 "isolation_evidence_sha256": isolation_evidence_sha256,
+                "experiment_config": self._experiment_config(),
             }
             self._save()
 
@@ -129,7 +134,7 @@ class CollaborationBaselineRun:
             raise CollaborationProtocolError(
                 f"Chapter {chapter_id} has {count} Han characters; expected 2000..3000"
             )
-        chapter_path = self.run_dir / "chapters" / f"chapter_{chapter_id:03d}.md"
+        chapter_path = self.text_dir / f"chapter_{chapter_id:03d}.md"
         atomic_write_text(chapter_path, text + "\n")
         self.state["transaction"].update({
             "chapter_text": self._relative(chapter_path),
@@ -145,6 +150,7 @@ class CollaborationBaselineRun:
         request_path = self._write_summary_request(chapter_id, text)
         self.state["stage"] = "awaiting_summary"
         self.state["transaction"]["summary_request"] = self._relative(request_path)
+        self.state["transaction"]["summary_request_sha256"] = sha_file(request_path)
         self._save()
         return request_path
 
@@ -153,9 +159,10 @@ class CollaborationBaselineRun:
         self._require("awaiting_summary", chapter_id)
         raw = summary_path.read_text(encoding="utf-8-sig")
         payload = parse_json_object(raw)
-        summary = str(payload.get("summary", "")).strip()
-        if not summary:
+        summary = payload.get("summary")
+        if not isinstance(summary, str) or not summary.strip():
             raise CollaborationProtocolError("Running summary response has no summary")
+        summary = summary.strip()
         memory = self.memory
         if not isinstance(memory, RunningSummaryMemory):
             raise CollaborationProtocolError("Summary submitted to a non-summary baseline")
@@ -207,6 +214,8 @@ class CollaborationBaselineRun:
         )
         if self.state.get("run_mode") != self.run_mode:
             raise CollaborationProtocolError("Baseline run_mode changed during the run")
+        if self.state.get("experiment_config") != self._experiment_config():
+            raise CollaborationProtocolError("Baseline experiment configuration changed")
         if self.isolation_policy is not None and (
             self.state.get("isolation_policy") != self.isolation_policy
             or self.state.get("isolation_evidence_sha256")
@@ -226,4 +235,19 @@ class CollaborationBaselineRun:
     def _require(self, stage: str, chapter_id: int, *, expect_next: bool = False) -> None:
         require_stage(self.state, stage, chapter_id, expect_next=expect_next)
     def _relative(self, path: Path) -> str:
-        return path.resolve().relative_to(self.run_dir).as_posix()
+        resolved = path.resolve()
+        if resolved.is_relative_to(self.text_dir):
+            return str(resolved)
+        return resolved.relative_to(self.run_dir).as_posix()
+
+    def _experiment_config(self) -> dict[str, Any]:
+        method_config = getattr(self.memory, "protocol_config", lambda: {})()
+        return {
+            "model": self.model,
+            "reasoning_effort": self.reasoning_effort,
+            "token_budget": self.token_budget,
+            "length_gate_han_chars": [2000, 3000],
+            "max_retries": self.max_retries,
+            "method_config": method_config,
+            "text_dir": str(self.text_dir),
+        }

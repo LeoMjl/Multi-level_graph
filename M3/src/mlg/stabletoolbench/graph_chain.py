@@ -68,6 +68,7 @@ class StableToolBenchGraphChain(StateDrivenCognitionMixin, single_chain):
             plan,
             plan_source=self.plan_source,
             ablation=self.ablation,
+            dependency_filter=self._filter_dependencies,
         )
         if self.ablation.expand_all_l3_before_execution:
             for stage_id in self.trajectory.layout.business_stage_ids:

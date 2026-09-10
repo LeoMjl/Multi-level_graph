@@ -45,6 +45,7 @@ class CollaborationBaselineRun:
         isolation_evidence_sha256: str | None = None,
         fake_embeddings: bool = False,
         max_retries: int = 5,
+        text_dir: Path | None = None,
     ) -> None:
         if condition not in BASELINE_CONDITIONS:
             raise ValueError(f"Unknown collaboration baseline: {condition}")
@@ -59,6 +60,7 @@ class CollaborationBaselineRun:
             )
         self.dataset = M5Dataset(m5_root)
         self.run_dir = run_dir.resolve()
+        self.text_dir = (text_dir or self.run_dir / "chapters").resolve()
         self.condition = condition
         self.replicate = replicate
         self.token_budget = token_budget
@@ -137,11 +139,11 @@ class CollaborationBaselineRun:
         self._require("awaiting_chapter_text", chapter_id)
         text = text_path.read_text(encoding="utf-8-sig").strip()
         count = han_char_count(text)
-        if not 2000 <= count <= 3000:
+        if not 2000 <= count <= 3500:
             raise CollaborationProtocolError(
-                f"Chapter {chapter_id} has {count} Han characters; expected 2000..3000"
+                f"Chapter {chapter_id} has {count} Han characters; expected 2000..3500"
             )
-        chapter_path = self.run_dir / "chapters" / f"chapter_{chapter_id:03d}.md"
+        chapter_path = self.text_dir / f"chapter_{chapter_id:03d}.md"
         atomic_write_text(chapter_path, text + "\n")
         self.state["transaction"].update({
             "chapter_text": self._relative(chapter_path),
@@ -159,6 +161,7 @@ class CollaborationBaselineRun:
         request_path = self._write_summary_request(chapter_id, text)
         self.state["stage"] = "awaiting_summary"
         self.state["transaction"]["summary_request"] = self._relative(request_path)
+        self.state["transaction"]["summary_request_sha256"] = sha_file(request_path)
         self._save()
         return request_path
 
@@ -170,19 +173,25 @@ class CollaborationBaselineRun:
         memory = self.memory
         stored = self.run_dir / "summaries" / f"chapter_{chapter_id:03d}.json"
         if isinstance(memory, RunningSummaryMemory):
-            summary = str(payload.get("summary", "")).strip()
-            if not summary:
+            summary = payload.get("summary")
+            if not isinstance(summary, str) or not summary.strip():
                 raise CollaborationProtocolError("Running summary response has no summary")
+            summary = summary.strip()
             memory.summary = truncate_tokens(summary, self.token_budget, keep_end=True)
             memory.covered_through = chapter_id
             stored_payload = {"summary": memory.summary}
         elif isinstance(memory, HierarchicalSummaryMemory):
-            chapter_summary = str(payload.get("chapter_summary", "")).strip()
-            volume_summary = str(payload.get("volume_summary", "")).strip()
-            if not chapter_summary or not volume_summary:
+            chapter_summary = payload.get("chapter_summary")
+            volume_summary = payload.get("volume_summary")
+            if not all(
+                isinstance(value, str) and value.strip()
+                for value in (chapter_summary, volume_summary)
+            ):
                 raise CollaborationProtocolError(
                     "Hierarchical summary response requires both summary fields"
                 )
+            chapter_summary = chapter_summary.strip()
+            volume_summary = volume_summary.strip()
             memory.apply_update(
                 self.dataset.release(chapter_id),
                 chapter_summary=chapter_summary,
@@ -275,7 +284,10 @@ class CollaborationBaselineRun:
     def _require(self, stage: str, chapter_id: int, *, expect_next: bool = False) -> None:
         require_stage(self.state, stage, chapter_id, expect_next=expect_next)
     def _relative(self, path: Path) -> str:
-        return path.resolve().relative_to(self.run_dir).as_posix()
+        resolved = path.resolve()
+        if resolved.is_relative_to(self.text_dir):
+            return str(resolved)
+        return resolved.relative_to(self.run_dir).as_posix()
 
     def _experiment_config(self) -> dict[str, Any]:
         method_config = getattr(self.memory, "protocol_config", lambda: {})()
@@ -283,7 +295,8 @@ class CollaborationBaselineRun:
             "model": self.model,
             "reasoning_effort": self.reasoning_effort,
             "token_budget": self.token_budget,
-            "length_gate_han_chars": [2000, 3000],
+            "length_gate_han_chars": [2000, 3500],
             "max_retries": self.max_retries,
             "method_config": method_config,
+            "text_dir": str(self.text_dir),
         }

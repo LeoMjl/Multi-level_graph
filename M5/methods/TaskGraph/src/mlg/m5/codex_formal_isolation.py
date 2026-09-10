@@ -15,7 +15,7 @@ from typing import Any, Sequence
 
 
 PROFILE_NAME = "m5_formal_actor"
-MIN_CODEX_VERSION = (0, 138, 0)
+MIN_CODEX_VERSION = (0, 153, 4)
 _SCRUB_ENV = (
     "CODEX_PERMISSION_PROFILE",
     "CODEX_SESSION_ID",

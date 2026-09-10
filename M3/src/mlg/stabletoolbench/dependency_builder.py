@@ -16,7 +16,7 @@ class DependencyConfig:
     window_turns: int = 8
     semantic_threshold: float = 0.18
     reference_threshold: int = 2
-    max_candidates: int = 16
+    max_candidates: int | None = None
     min_shared_path_depth: int = 1
     candidate_levels: tuple[NodeLevel, ...] = (
         NodeLevel.L2,
@@ -33,7 +33,7 @@ class DependencyConfig:
     def __post_init__(self) -> None:
         if self.window_turns < 0 or self.reference_threshold < 0:
             raise ValueError("window and reference thresholds must be non-negative")
-        if self.max_candidates < 0 or self.min_shared_path_depth < 0:
+        if (self.max_candidates is not None and self.max_candidates < 0) or self.min_shared_path_depth < 0:
             raise ValueError("candidate limits must be non-negative")
         if not -1.0 <= self.semantic_threshold <= 1.0:
             raise ValueError("semantic_threshold must be in [-1, 1]")
@@ -108,8 +108,9 @@ def build_dependency_candidates(
     hard_dependency_ids: tuple[str, ...] | list[str] = (),
     semantic_scores: Mapping[str, float] | None = None,
     config: DependencyConfig | None = None,
+    new_state_ids: tuple[str, ...] | list[str] = (),
 ) -> DependencyCandidates:
-    """Build ``hard union ((Vc intersect Vr) union Cdep)`` candidates.
+    """Build deduplicated ``hard union Vc union Cdep union Vr`` candidates.
 
     ``semantic_scores`` accepts scores from any separately configured encoder.
     When absent, a deterministic sparse token cosine is used; it requires no
@@ -120,6 +121,15 @@ def build_dependency_candidates(
     target = _require_node(graph, target_id)
     hard = _validated_hard(graph, target_id, hard_dependency_ids)
     history = _eligible_history(graph, target_id, policy)
+    history_ids = {node.node_id for node in history}
+    for node_id in new_state_ids:
+        node = _require_node(graph, node_id)
+        if node.level != NodeLevel.L4 or node.status == NodeStatus.DROPPED:
+            raise ValueError("Write-back candidates must be available L4 states")
+        if node_id not in history_ids:
+            history.append(node)
+            history_ids.add(node_id)
+    current_turn = max([target.turn_index, *(n.turn_index for n in history)])
     provided = semantic_scores is not None
     scores = {
         node.node_id: _safe_score(semantic_scores.get(node.node_id, 0.0))
@@ -128,9 +138,10 @@ def build_dependency_candidates(
     }
     structural = {
         node.node_id for node in history
-        if target.turn_index - node.turn_index <= policy.window_turns
+        if current_turn - node.turn_index <= policy.window_turns
         and _paths_overlap(node.path, target.path, policy.min_shared_path_depth)
     }
+    structural.update(hard)  # Explicit plan relations are structural candidates.
     semantic = {
         node.node_id for node in history
         if scores[node.node_id] >= policy.semantic_threshold
@@ -141,7 +152,7 @@ def build_dependency_candidates(
         if ref_counts[node.node_id] >= policy.reference_threshold
         or node.status == NodeStatus.ACTIVE
     }
-    fused = (structural & referenced) | semantic
+    fused = structural | referenced | semantic
     insertion = {node_id: index for index, node_id in enumerate(graph.nodes)}
     ranked = sorted(
         fused - set(hard),

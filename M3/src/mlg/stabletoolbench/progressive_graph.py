@@ -23,6 +23,7 @@ from mlg.stabletoolbench.trajectory_context import (
     scheduled_context_node_ids,
 )
 from mlg.stabletoolbench.trajectory_state import apply_observation_state
+from mlg.stabletoolbench.dependency_filter import dependency_context, validate_selection
 class ProgressiveToolGraph:
     """Progressively expanded, dependency-aware TaskGraph for one tool task."""
     def __init__(
@@ -33,8 +34,10 @@ class ProgressiveToolGraph:
         *,
         plan_source: str = "model",
         ablation: TaskGraphAblation | None = None,
+        dependency_filter=None,
     ) -> None:
         self.ablation = ablation or TaskGraphAblation()
+        self.dependency_filter = dependency_filter
         self.tools = list(tools or [])
         self.query = query
         self.plan = self._normalize_plan(plan)
@@ -132,6 +135,10 @@ class ProgressiveToolGraph:
             created = add_expanded_stage(
                 self.graph, self.layout, stage_id, list(steps or []),
             )
+            for node_id in created:
+                self.graph.nodes[node_id].turn_index = self.turn
+                for child in self.graph.children(node_id, NodeLevel.L4):
+                    child.turn_index = self.turn
             self._attach_expansion_dependencies(created)
             stage = self.graph.nodes[stage_id]
             stage.metadata["expansion_valid"] = bool(created)
@@ -276,10 +283,10 @@ class ProgressiveToolGraph:
         step.status = NodeStatus.DROPPED
         step.metadata["drop_reason"] = str(reason)[:600]
 
-    def _attach_expansion_dependencies(self, step_ids: list[str]) -> None:
+    def _attach_expansion_dependencies(self, step_ids: list[str], *, new_state_ids=()) -> None:
         for step_id in step_ids:
             step = self.graph.nodes[step_id]
-            for source_ref in step.metadata.get("references", []):
+            for source_ref in ([] if new_state_ids else step.metadata.get("references", [])):
                 source = self.layout.step_by_ref.get(str(source_ref), str(source_ref))
                 if source in self.graph.nodes and source != step_id:
                     source_node = self.graph.nodes[source]
@@ -329,32 +336,65 @@ class ProgressiveToolGraph:
                 continue
             candidates = build_dependency_candidates(
                 self.graph, step_id, hard_dependency_ids=hard_ids,
+                new_state_ids=tuple(dict.fromkeys([
+                    *new_state_ids,
+                    *(edge.source_id for edge in self.graph.edges
+                      if new_state_ids and edge.target_id == step_id
+                      and edge.metadata.get("selection") == "agent_dependency_filter"
+                      and self.graph.nodes[edge.source_id].level == NodeLevel.L4
+                      and self.graph.nodes[edge.source_id].status != NodeStatus.DROPPED),
+                ])),
             )
-            for source_id in candidates.fused_candidates:
+            context = dependency_context(self.graph, step_id, candidates.fused_candidates)
+            if not candidates.fused_candidates:
+                retained, filter_trace = [], {"status": "empty", "calls": 0, "tokens": 0}
+            elif self.dependency_filter is None:
+                raise RuntimeError("Full TaskGraph requires the agent dependency-filter callback")
+            else:
+                retained, filter_trace = self.dependency_filter(context)
+            if retained is not None:
+                retained = validate_selection({"retain": retained}, context)
+                if new_state_ids:
+                    self.graph.edges[:] = [edge for edge in self.graph.edges
+                                           if not (edge.target_id == step_id
+                                                   and edge.metadata.get("selection")
+                                                   == "agent_dependency_filter")]
+            else:
+                self.drop_step(step_id, "invalid agent dependency-filter response")
+            for decision in retained or []:
+                source_id = decision["node_id"]
                 diagnostic = candidates.diagnostic(source_id)
                 if self._has_dependency_edge(source_id, step_id):
                     continue
+                metadata = candidate_edge_metadata(
+                    diagnostic, relation_type=decision["relation_type"],
+                    blocking=diagnostic.hard or decision["relation_type"] == "prerequisite",
+                )
+                metadata.update({
+                    "rationale": decision["rationale"], "evidence": decision["evidence"],
+                    "source": {"node_id": source_id,
+                               "provenance": dict(self.graph.nodes[source_id].metadata)},
+                    "selection": "agent_dependency_filter",
+                })
                 self.graph.add_edge(
                     source_id,
                     step_id,
                     EdgeType.DEPENDENCY,
-                    candidate_edge_metadata(
-                        diagnostic,
-                        relation_type=(
-                            "prerequisite" if diagnostic.hard else "support"
-                        ),
-                        blocking=diagnostic.hard,
-                    ),
+                    metadata,
                 )
             self.dependency_trace.append({
                 "target_id": step_id,
-                "policy": "fused_hard_and_soft",
+                "policy": "three_channel_union_then_agent_filter",
+                "trigger": "state_writeback" if new_state_ids else "stage_expansion",
                 "hard": list(candidates.hard_dependencies),
                 "Vc": list(candidates.structural_candidates),
                 "Cdep": list(candidates.semantic_candidates),
                 "Vr": list(candidates.reference_candidates),
                 "fusion_pool": list(candidates.fusion_pool),
-                "selected": list(candidates.fused_candidates),
+                "candidates": list(candidates.fused_candidates),
+                "selected": [item["node_id"] for item in retained or []],
+                "filter": filter_trace,
+                "context": context,
                 "semantic_backend": candidates.semantic_backend,
             })
 
@@ -495,6 +535,7 @@ class ProgressiveToolGraph:
                     "reason": "structured L4 writeback disabled by ablation",
                 })
             return
+        new_state_ids = []
         for update in updates[:16]:
             key = str(update.get("key", "")).strip()[:120]
             value = str(update.get("value", "")).strip()[:800]
@@ -549,6 +590,7 @@ class ProgressiveToolGraph:
                 },
             )
             self.graph.add_edge(parent_id, state_id, EdgeType.INCLUSION)
+            new_state_ids.append(state_id)
             self.graph.add_edge(
                 observation_id,
                 state_id,
@@ -571,6 +613,13 @@ class ProgressiveToolGraph:
                 "sub_type": "StructuredState",
                 "source_observation": observation_id,
             })
+        if new_state_ids and not self.ablation.hard_dependencies_only:
+            stage_id = self._stage_parent(step_id)
+            pending_ids = [
+                node.node_id for node in self.graph.children(stage_id, NodeLevel.L3)
+                if node.node_id != step_id and node.status == NodeStatus.PENDING
+            ]
+            self._attach_expansion_dependencies(pending_ids, new_state_ids=new_state_ids)
 
     def _stage_parent(self, step_id: str) -> str:
         for edge in self.graph.edges:

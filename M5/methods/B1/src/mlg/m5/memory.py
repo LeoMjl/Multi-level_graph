@@ -128,13 +128,13 @@ class RunningSummaryMemory(MemoryStrategy):
 
 
 def count_tokens(text: str) -> int:
-    return len(_encoder().encode(text))
+    return len(_encoder().encode(text, disallowed_special=()))
 
 
 def truncate_tokens(text: str, budget: int, *, keep_end: bool) -> str:
     if budget <= 0:
         return ""
-    tokens = _encoder().encode(text)
+    tokens = _encoder().encode(text, disallowed_special=())
     if len(tokens) <= budget:
         return text
     selected = tokens[-budget:] if keep_end else tokens[:budget]

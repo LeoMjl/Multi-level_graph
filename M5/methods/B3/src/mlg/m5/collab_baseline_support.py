@@ -22,6 +22,7 @@ def baseline_protocol_fingerprint() -> str:
         Path(__file__).with_name("__init__.py"),
         Path(__file__),
         Path(__file__).with_name("collab_baseline.py"),
+        Path(__file__).with_name("baseline_runtime.py"),
         Path(__file__).with_name("codex_cli_writer.py"),
         Path(__file__).with_name("codex_formal_isolation.py"),
         Path(__file__).with_name("continuity.py"),
@@ -31,8 +32,8 @@ def baseline_protocol_fingerprint() -> str:
         Path(__file__).with_name("prompts.py"),
         Path(__file__).with_name("rag_codec.py"),
         Path(__file__).with_name("rag_memory.py"),
-        root / "tools" / "run_m5_baseline_collab.py",
-        root / "tools" / "set_m5_codex_isolation_acl.ps1",
+        root / "run.py",
+        root.parent / "TaskGraph" / "set_isolation_acl.ps1",
     )
     digest = hashlib.sha256()
     for path in paths:

@@ -122,23 +122,34 @@ class CodexCliWriter:
             "log": str(log_path),
         }
         try:
-            completed = subprocess.run(
+            process = subprocess.Popen(
                 command,
-                input=prompt,
                 text=True,
                 encoding="utf-8",
                 errors="replace",
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
-                timeout=self.timeout_seconds,
-                check=False,
+                stdin=subprocess.PIPE,
                 env=sanitized_codex_env(),
                 cwd=actor_dir,
             )
+            output, _ = process.communicate(prompt, timeout=self.timeout_seconds)
+            completed = subprocess.CompletedProcess(command, process.returncode, output)
         except subprocess.TimeoutExpired as exc:
+            # A .cmd launcher has descendants; terminate our entire timed-out tree.
+            subprocess.run(
+                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                check=False, timeout=30,
+            )
+            try:
+                partial, _ = process.communicate(timeout=10)
+            except subprocess.TimeoutExpired:
+                partial = exc.stdout or ""
+            if isinstance(partial, bytes):
+                partial = partial.decode("utf-8", errors="replace")
             elapsed_ms = (time.perf_counter() - started) * 1000
-            partial = str(exc.stdout or "")
-            atomic_write_text(log_path, partial)
+            atomic_write_text(log_path, partial or "")
             text = self._read_output(output_path)
             record.update({
                 "status": "timeout", "elapsed_ms": elapsed_ms, "exit_code": None,

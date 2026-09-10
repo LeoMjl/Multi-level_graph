@@ -15,7 +15,7 @@ from typing import Any, Sequence
 
 
 PROFILE_NAME = "m5_formal_actor"
-MIN_CODEX_VERSION = (0, 138, 0)
+MIN_CODEX_VERSION = (0, 153, 4)
 _SCRUB_ENV = (
     "CODEX_PERMISSION_PROFILE",
     "CODEX_SESSION_ID",
@@ -25,6 +25,39 @@ _SCRUB_ENV = (
 _SECRET_ENV_MARKERS = (
     "API_KEY", "ACCESS_KEY", "AUTH_TOKEN", "CREDENTIAL", "PASSWORD", "SECRET", "TOKEN",
 )
+_HISTORY_DIRS = (
+    "sessions", "archived_sessions", "memories", "attachments", "automations",
+    "log_backups", "sqlite", "process_manager", "visualizations",
+    "dictation-history", "ambient-suggestions", "browser/sessions",
+)
+_HISTORY_DATABASES = (
+    "state_5.sqlite", "logs_2.sqlite", "thread_history_1.sqlite",
+    "queue_1.sqlite", "memories_1.sqlite", "goals_1.sqlite",
+)
+_HISTORY_FILES = (
+    "history.jsonl", "session_index.jsonl", "transcription-history.jsonl",
+    ".codex-global-state.json", ".codex-global-state.json.bak",
+    ".codex-global-state.json.bak.bak",
+)
+def codex_history_root() -> Path:
+    return Path(os.environ.get("CODEX_HOME", Path.home() / ".codex")).resolve()
+
+
+def codex_history_profile_paths() -> tuple[Path, ...]:
+    """Keep the profile stable without materializing transient SQLite sidecars."""
+    root = codex_history_root()
+    names = (*_HISTORY_DIRS, ".sandbox", *_HISTORY_FILES)
+    # Missing deny targets are materialized as directories by the Windows sandbox
+    # setup helper. WAL/SHM names remain covered by the root-level history guard.
+    return (root, *(root / name for name in (*names, *_HISTORY_DATABASES)))
+
+
+def codex_history_probe_files() -> tuple[Path, ...]:
+    root = codex_history_root()
+    return tuple(
+        root / name for name in (*_HISTORY_DATABASES, *_HISTORY_FILES, ".sandbox/sandbox.log")
+        if (root / name).is_file()
+    )
 
 
 class FormalIsolationError(RuntimeError):
@@ -64,10 +97,13 @@ class FormalIsolationEvidence:
 
 
 def permission_profile_config_args() -> tuple[str, ...]:
+    history_denies = ",".join(
+        json.dumps(path.as_posix()) + '="deny"' for path in codex_history_profile_paths()
+    )
     filesystem = (
         '{":root"="deny",":minimal"="read",'
         '":workspace_roots"={"."="read"},'
-        '":tmpdir"="deny",":slash_tmp"="deny"}'
+        '":tmpdir"="deny",":slash_tmp"="deny",' + history_denies + '}'
     )
     return (
         "-c", f"permissions.{PROFILE_NAME}.filesystem={filesystem}",
@@ -82,6 +118,9 @@ def formal_global_policy_args() -> tuple[str, ...]:
 
 def formal_exec_policy_args() -> tuple[str, ...]:
     return (
+        "--disable", "shell_tool",
+        "--disable", "unified_exec",
+        "--disable", "multi_agent",
         "--strict-config",
         "-c", 'windows.sandbox="elevated"',
         "-c", f'default_permissions="{PROFILE_NAME}"',
@@ -115,10 +154,15 @@ def formal_isolation_preflight(
     actor.mkdir(parents=True, exist_ok=True)
     _reject_reparse_points(actor)
     forbidden = [path.resolve(strict=True) for path in forbidden_files]
+    history_probes = codex_history_probe_files()
+    persistent_acl_probes = [*forbidden, *history_probes]
+    forbidden.extend(history_probes)
     if not forbidden or any(_contains(actor, path) for path in forbidden):
         raise FormalIsolationError("Forbidden probes must exist outside the actor root")
 
-    acl_probe_count = _verify_acl_denies(forbidden)
+    # App metadata is atomically replaced; verify its effective denial below
+    # without requiring a transient per-file ACL to survive that replacement.
+    acl_probe_count = _verify_acl_denies(persistent_acl_probes)
     env = sanitized_codex_env()
     raw_version = subprocess.check_output(
         [codex_executable, "--version"], text=True, encoding="utf-8", env=env,

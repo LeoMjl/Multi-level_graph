@@ -56,3 +56,10 @@ M5/evaluation/packets/
 M5/evaluation/results/
 M5/methods/*/run/
 M5/methods/*/work/
+/M5/artifacts/
+
+# Local validation and unpublished materials
+/M3/tests/
+/M5/tests/
+/paper/
+/实验产物/
