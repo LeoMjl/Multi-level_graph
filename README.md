@@ -1,12 +1,12 @@
-# 实验运行
+# Running the Experiments
 
-安装公共依赖：
+Install the shared dependencies:
 
 ```powershell
 python -m pip install -r requirements.txt
 ```
 
-进入对应目录并按照运行说明执行：
+Open the directory for the required experiment and follow its running instructions:
 
 - [M1](M1/README.md)
 - [M2](M2/README.md)

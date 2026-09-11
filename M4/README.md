@@ -1,25 +1,25 @@
-# M4 运行方法
+# M4 Running Instructions
 
-在项目根目录安装依赖，然后进入 `M4`：
+Open PowerShell in the `M4` directory and install the shared dependencies:
 
 ```powershell
 python -m pip install -r ..\requirements.txt
 ```
 
-将 QuALITY 和 MultiHop-RAG 数据分别放入：
+Place the QuALITY and MultiHop-RAG datasets in the following directories:
 
 ```text
 data/raw/quality/
 data/raw/multihop_rag/
 ```
 
-运行全部数据集和方法：
+Run all datasets and methods:
 
 ```powershell
 python run.py --model-config model_config.example.json
 ```
 
-指定数据集、方法或样本数：
+Select datasets, methods, or a sample limit:
 
 ```powershell
 python run.py --model-config model_config.example.json `
@@ -28,5 +28,6 @@ python run.py --model-config model_config.example.json `
   --limit 20
 ```
 
-使用 `--build-only` 仅构建索引，使用 `--judge-only` 运行评审，使用 `--report-only` 生成汇总。
-GraphRAG 源码目录可通过 `GRAPHRAG_ROOT` 环境变量指定。
+Use `--build-only` to build indexes, `--judge-only` to run evaluation, and
+`--report-only` to generate the summary. Set `GRAPHRAG_ROOT` to specify the
+GraphRAG source directory.

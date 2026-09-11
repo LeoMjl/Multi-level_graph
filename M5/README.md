@@ -1,19 +1,19 @@
-# M5 运行方法
+# M5 Running Instructions
 
-在项目根目录安装依赖：
+Install the dependencies from the repository root:
 
 ```powershell
 python -m pip install -r requirements.txt
 ```
 
-进入 `M5` 目录，并配置 Codex writer 的隔离权限：
+Enter the `M5` directory and configure isolation permissions for the Codex writer:
 
 ```powershell
 Set-Location M5
 powershell -ExecutionPolicy Bypass -File methods/TaskGraph/set_isolation_acl.ps1 -Action Apply
 ```
 
-分别运行六个实验条件：
+Run the six experimental conditions:
 
 ```powershell
 python methods/B0/run.py run --run-dir methods/B0/run --chapter-end 320
@@ -24,18 +24,18 @@ python methods/B4/run.py run --run-dir methods/B4/run --chapter-end 320
 python methods/TaskGraph/run.py run --run-dir methods/TaskGraph/run --chapter-end 320
 ```
 
-B3 运行前准备本地中文嵌入模型。TaskGraph 使用 DashScope 时设置
-`DASHSCOPE_API_KEY`；使用 OpenRouter 时设置 `OPENROUTER_API_KEY`，并在运行命令中
-添加 `--embedding-provider openrouter`。
+Prepare a local Chinese embedding model before running B3. For TaskGraph, set
+`DASHSCOPE_API_KEY` when using DashScope. To use OpenRouter, set
+`OPENROUTER_API_KEY` and add `--embedding-provider openrouter` to the command.
 
-查看运行状态：
+Check run status:
 
 ```powershell
 python methods/B0/run.py status --run-dir methods/B0/run
 python methods/TaskGraph/run.py status --run-dir methods/TaskGraph/run
 ```
 
-六个条件完成后生成评审包并汇总评审结果：
+After all six conditions finish, prepare the review packets and aggregate the results:
 
 ```powershell
 python evaluation/prepare_packets.py
